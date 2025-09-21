@@ -156,7 +156,7 @@ automation:
       # Log trip details with locations
       - service: logbook.log
         data:
-          name: "EV Trip Completed"
+          name: "IDBuzz Trip Completed"
           message: "From: {{ states('input_text.idbuzz_trip_start_location') }} to {{ states('input_text.idbuzz_trip_end_location') }} - Distance: {{ trip_distance }}km, Battery used: {{ battery_used_percent }}% ({{ kwh_consumed }}kWh)"
 
 
@@ -178,7 +178,7 @@ shell_command:
         'battery_percent_used': {{ battery_percent_used }}
     }
     
-    file_path = '/config/ev_trips.json'
+    file_path = '/config/idbuzz_trips.json'
     trips = []
     
     if os.path.exists(file_path):
@@ -196,10 +196,10 @@ shell_command:
 sensor:
   - platform: template
     sensors:
-      ev_trip_history:
+      idbuzz_trip_history:
         friendly_name: "EV Trip History"
         value_template: >
-          {% set data = states.sensor.ev_trips_file_content.state %}
+          {% set data = states.sensor.idbuzz_trips_file_content.state %}
           {% if data and data != 'unknown' %}
             {{ (data | from_json | length) if data != '[]' else 0 }}
           {% else %}
@@ -208,7 +208,7 @@ sensor:
         unit_of_measurement: "trips"
         attribute_templates:
           trips: >
-            {% set data = states.sensor.ev_trips_file_content.state %}
+            {% set data = states.sensor.idbuzz_trips_file_content.state %}
             {% if data and data != 'unknown' %}
               {{ data | from_json }}
             {% else %}
@@ -216,8 +216,8 @@ sensor:
             {% endif %}
 
   - platform: command_line
-    name: ev_trips_file_content
-    command: "cat /config/ev_trips.json 2>/dev/null || echo '[]'"
+    name: idbuzz_trips_file_content
+    command: "cat /config/idbuzz_trips.json 2>/dev/null || echo '[]'"
     scan_interval: 30
 
 # === Utility Meters for Trip Aggregation ===

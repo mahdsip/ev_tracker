@@ -128,7 +128,7 @@ automation:
       # Log charging session
       - service: logbook.log
         data:
-          name: "EV Charging Completed"
+          name: "IDBuzz Charging Completed"
           message: "At {{ location }} - Battery: {{ start_batt }}% → {{ end_batt }}% (+{{ charge_gained }}%, {{ kwh_charged }}kWh, {{ charge_cost }}€)"
 
 # === Shell Commands ===
@@ -150,7 +150,7 @@ shell_command:
         'charge_cost_euros': {{ charge_cost }}
     }
     
-    file_path = '/config/ev_charging.json'
+    file_path = '/config/idbuzz_charging.json'
     sessions = []
     
     if os.path.exists(file_path):
@@ -168,10 +168,10 @@ shell_command:
 sensor:
   - platform: template
     sensors:
-      ev_charging_history:
-        friendly_name: "EV Charging History"
+      idbuzz_charging_history:
+        friendly_name: "IDBuzz Charging History"
         value_template: >
-          {% set data = states.sensor.ev_charging_file_content.state %}
+          {% set data = states.sensor.idbuzz_charging_file_content.state %}
           {% if data and data != 'unknown' %}
             {{ (data | from_json | length) if data != '[]' else 0 }}
           {% else %}
@@ -180,7 +180,7 @@ sensor:
         unit_of_measurement: "sessions"
         attribute_templates:
           sessions: >
-            {% set data = states.sensor.ev_charging_file_content.state %}
+            {% set data = states.sensor.idbuzz_charging_file_content.state %}
             {% if data and data != 'unknown' %}
               {{ data | from_json }}
             {% else %}
@@ -188,8 +188,8 @@ sensor:
             {% endif %}
 
   - platform: command_line
-    name: ev_charging_file_content
-    command: "cat /config/ev_charging.json 2>/dev/null || echo '[]'"
+    name: idbuzz_charging_file_content
+    command: "cat /config/idbuzz_charging.json 2>/dev/null || echo '[]'"
     scan_interval: 30
 
 # === Utility Meters for Charging Aggregation ===
