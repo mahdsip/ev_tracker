@@ -194,22 +194,22 @@ sensor:
 
 # === Utility Meters for Charging Aggregation ===
 utility_meter:
-  daily_charging:
+  idbuzz_daily_charging:
     source: input_number.idbuzz_last_charge_kwh
     cycle: daily
-  weekly_charging:
+  idbuzz_weekly_charging:
     source: input_number.idbuzz_last_charge_kwh
     cycle: weekly
-  monthly_charging:
+  idbuzz_monthly_charging:
     source: input_number.idbuzz_last_charge_kwh
     cycle: monthly
 
-  daily_charging_cost:
+  idbuzz_daily_charging_cost:
     source: input_number.idbuzz_last_charge_cost
     cycle: daily
-  weekly_charging_cost:
+  idbuzz_weekly_charging_cost:
     source: input_number.idbuzz_last_charge_cost
     cycle: weekly
-  monthly_charging_cost:
+  idbuzz_monthly_charging_cost:
     source: input_number.idbuzz_last_charge_cost
     cycle: monthly

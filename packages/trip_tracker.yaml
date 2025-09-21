@@ -222,23 +222,23 @@ sensor:
 
 # === Utility Meters for Trip Aggregation ===
 utility_meter:
-  daily_mileage:
+  idbuzz_daily_mileage:
     source: input_number.idbuzz_last_trip_distance
     cycle: daily
-  weekly_mileage:
+  idbuzz_weekly_mileage:
     source: input_number.idbuzz_last_trip_distance
     cycle: weekly
-  monthly_mileage:
+  idbuzz_monthly_mileage:
     source: input_number.idbuzz_last_trip_distance
     cycle: monthly
 
-  daily_battery_consumption:
+  idbuzz_daily_battery_consumption:
     source: input_number.idbuzz_last_trip_kwh
     cycle: daily
-  weekly_battery_consumption:
+  idbuzz_weekly_battery_consumption:
     source: input_number.idbuzz_last_trip_kwh
     cycle: weekly
-  monthly_battery_consumption:
+  idbuzz_monthly_battery_consumption:
     source: input_number.idbuzz_last_trip_kwh
     cycle: monthly
     
