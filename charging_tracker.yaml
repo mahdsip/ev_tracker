@@ -1,0 +1,215 @@
+# === Charging Tracker Helpers ===
+input_number:
+  idbuzz_charging_start_battery:
+    name: Charging Start Battery
+    initial: 0
+    min: 0
+    max: 100
+    step: 0.1
+
+  idbuzz_last_charge_kwh:
+    name: Last Charge kWh
+    initial: 0
+    min: 0
+    max: 100
+    step: 0.01
+    unit_of_measurement: "kWh"
+
+  idbuzz_last_charge_cost:
+    name: Last Charge Cost
+    initial: 0
+    min: 0
+    max: 100
+    step: 0.01
+    unit_of_measurement: "€"
+
+input_text:
+  idbuzz_charging_location:
+    name: Charging Location
+    initial: ""
+    max: 255
+
+input_datetime:
+  idbuzz_charging_start_time:
+    name: Charging Start Time
+    has_date: true
+    has_time: true
+
+  idbuzz_charging_end_time:
+    name: Charging End Time
+    has_date: true
+    has_time: true
+
+# === Charging Automations ===
+automation:
+  # Record charging start when charging begins
+  - alias: "Charging Start - Record Initial Values"
+    trigger:
+      - platform: state
+        entity_id: switch.idbuzz_charging
+        from: "off"
+        to: "on"
+    action:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.idbuzz_charging_start_battery
+        data:
+          value: "{{ states('sensor.idbuzz_battery_level') | float(0) }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.idbuzz_charging_location
+        data:
+          value: "{{ state_attr('device_tracker.idbuzz_position', 'friendly_name') or 'Unknown' }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.idbuzz_charging_start_time
+        data:
+          datetime: "{{ now() }}"
+
+  # Record charging end and calculate totals
+  - alias: "Charging End - Calculate Charging Totals"
+    trigger:
+      - platform: state
+        entity_id: switch.idbuzz_charging
+        from: "on"
+        to: "off"
+    action:
+      - condition: template
+        value_template: "{{ states('sensor.idbuzz_battery_level') not in ['unknown', 'unavailable'] }}"
+      - variables:
+          start_batt: "{{ states('input_number.idbuzz_charging_start_battery') | float(0) }}"
+          end_batt: "{{ states('sensor.idbuzz_battery_level') | float(0) }}"
+          charge_gained: "{{ (end_batt - start_batt) | round(2) if end_batt > start_batt else 0 }}"
+          kwh_charged: "{{ (charge_gained * 0.77) | round(2) }}"
+          location: "{{ states('input_text.idbuzz_charging_location') }}"
+          kwh_price: >
+            {% if 'endesa1' in location %}
+              0.31
+            {% elif 'iberdrola1' in location %}
+              0.32
+            {% else %}
+              0.45
+            {% endif %}
+          charge_cost: "{{ (kwh_charged * kwh_price) | round(2) }}"
+
+      # Only log if battery actually increased
+      - condition: "{{ charge_gained > 0 }}"
+      
+      # Record charging end time
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.idbuzz_charging_end_time
+        data:
+          datetime: "{{ now() }}"
+
+      # Record charged energy and cost
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.idbuzz_last_charge_kwh
+        data:
+          value: "{{ kwh_charged }}"
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.idbuzz_last_charge_cost
+        data:
+          value: "{{ charge_cost }}"
+
+      # Store complete charging data in JSON file
+      - service: shell_command.log_charging_data
+        data:
+          start_time: "{{ states('input_datetime.idbuzz_charging_start_time') }}"
+          end_time: "{{ states('input_datetime.idbuzz_charging_end_time') }}"
+          location: "{{ states('input_text.idbuzz_charging_location') }}"
+          start_battery: "{{ start_batt }}"
+          end_battery: "{{ end_batt }}"
+          kwh_charged: "{{ kwh_charged }}"
+          charge_gained: "{{ charge_gained }}"
+
+      # Log charging session
+      - service: logbook.log
+        data:
+          name: "EV Charging Completed"
+          message: "At {{ location }} - Battery: {{ start_batt }}% → {{ end_batt }}% (+{{ charge_gained }}%, {{ kwh_charged }}kWh, {{ charge_cost }}€)"
+
+# === Shell Commands ===
+shell_command:
+  log_charging_data: >
+    python3 -c "
+    import json, os
+    from datetime import datetime
+    
+    charging_data = {
+        'start_time': '{{ start_time }}',
+        'end_time': '{{ end_time }}',
+        'location': '{{ location }}',
+        'start_battery_percent': {{ start_battery }},
+        'end_battery_percent': {{ end_battery }},
+        'charge_gained_percent': {{ charge_gained }},
+        'kwh_charged': {{ kwh_charged }},
+        'kwh_price': {{ kwh_price }},
+        'charge_cost_euros': {{ charge_cost }}
+    }
+    
+    file_path = '/config/ev_charging.json'
+    sessions = []
+    
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as f:
+            sessions = json.load(f)
+    
+    sessions.insert(0, charging_data)
+    sessions = sessions[:50]  # Keep only last 50 sessions
+    
+    with open(file_path, 'w') as f:
+        json.dump(sessions, f, indent=2)
+    "
+
+# === Sensors ===
+sensor:
+  - platform: template
+    sensors:
+      ev_charging_history:
+        friendly_name: "EV Charging History"
+        value_template: >
+          {% set data = states.sensor.ev_charging_file_content.state %}
+          {% if data and data != 'unknown' %}
+            {{ (data | from_json | length) if data != '[]' else 0 }}
+          {% else %}
+            0
+          {% endif %}
+        unit_of_measurement: "sessions"
+        attribute_templates:
+          sessions: >
+            {% set data = states.sensor.ev_charging_file_content.state %}
+            {% if data and data != 'unknown' %}
+              {{ data | from_json }}
+            {% else %}
+              []
+            {% endif %}
+
+  - platform: command_line
+    name: ev_charging_file_content
+    command: "cat /config/ev_charging.json 2>/dev/null || echo '[]'"
+    scan_interval: 30
+
+# === Utility Meters for Charging Aggregation ===
+utility_meter:
+  daily_charging:
+    source: input_number.idbuzz_last_charge_kwh
+    cycle: daily
+  weekly_charging:
+    source: input_number.idbuzz_last_charge_kwh
+    cycle: weekly
+  monthly_charging:
+    source: input_number.idbuzz_last_charge_kwh
+    cycle: monthly
+
+  daily_charging_cost:
+    source: input_number.idbuzz_last_charge_cost
+    cycle: daily
+  weekly_charging_cost:
+    source: input_number.idbuzz_last_charge_cost
+    cycle: weekly
+  monthly_charging_cost:
+    source: input_number.idbuzz_last_charge_cost
+    cycle: monthly

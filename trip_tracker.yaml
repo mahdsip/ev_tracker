@@ -1,0 +1,245 @@
+# === Helpers ===
+input_number:
+  idbuzz_previous_odometer:
+    name: Previous Odometer
+    initial: 0
+    min: 0
+    max: 999999
+    step: 0.1
+    unit_of_measurement: "km"
+
+  idbuzz_previous_battery_percent:
+    name: Previous Battery Percentage
+    initial: 100
+    min: 0
+    max: 100
+    step: 0.1
+    unit_of_measurement: "%"
+
+  idbuzz_last_trip_distance:
+    name: Last Trip Distance
+    initial: 0
+    min: 0
+    max: 1000
+    step: 0.1
+    unit_of_measurement: "km"
+
+  idbuzz_last_trip_kwh:
+    name: Last Trip kWh
+    initial: 0
+    min: 0
+    max: 100
+    step: 0.01
+    unit_of_measurement: "kWh"
+
+input_text:
+  idbuzz_trip_start_location:
+    name: Trip Start Location
+    initial: ""
+    max: 255
+
+  idbuzz_trip_end_location:
+    name: Trip End Location
+    initial: ""
+    max: 255
+
+input_datetime:
+  idbuzz_trip_start_time:
+    name: Trip Start Time
+    has_date: true
+    has_time: true
+
+  idbuzz_trip_end_time:
+    name: Trip End Time
+    has_date: true
+    has_time: true
+
+
+
+# === Automations: Trip-based tracking ===
+automation:
+  # Initialize trip start values when vehicle starts moving
+  - alias: "Trip Start - Record Initial Values"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.idbuzz_vehicle_moving
+        from: "off"
+        to: "on"
+    action:
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.idbuzz_previous_odometer
+        data:
+          value: "{{ states('sensor.idbuzz_odometer') | float(0) }}"
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.idbuzz_previous_battery_percent
+        data:
+          value: "{{ states('sensor.idbuzz_battery_level') | float(0) }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.idbuzz_trip_start_location
+        data:
+          value: "{{ state_attr('device_tracker.idbuzz_position', 'friendly_name') or 'Unknown' }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.idbuzz_trip_start_time
+        data:
+          datetime: "{{ now() }}"
+
+  # Calculate trip totals when vehicle stops moving
+  - alias: "Trip End - Calculate Trip Totals"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.idbuzz_vehicle_moving
+        from: "on"
+        to: "off"
+        for: "00:02:00"  # Wait 2 minutes to avoid false stops
+    action:
+      - condition: and
+        conditions:
+          - condition: template
+            value_template: "{{ states('sensor.idbuzz_odometer') not in ['unknown', 'unavailable'] }}"
+          - condition: template
+            value_template: "{{ states('sensor.idbuzz_battery_level') not in ['unknown', 'unavailable'] }}"
+      - variables:
+          curr_odo: "{{ states('sensor.idbuzz_odometer') | float(0) }}"
+          prev_odo: "{{ states('input_number.idbuzz_previous_odometer') | float(0) }}"
+          curr_batt: "{{ states('sensor.idbuzz_battery_level') | float(0) }}"
+          prev_batt: "{{ states('input_number.idbuzz_previous_battery_percent') | float(0) }}"
+          
+          trip_distance: "{{ (curr_odo - prev_odo) | round(2) if curr_odo > prev_odo else 0 }}"
+          battery_used_percent: "{{ (prev_batt - curr_batt) | round(2) if prev_batt > curr_batt else 0 }}"
+          kwh_consumed: "{{ (battery_used_percent * 0.77) | round(2) }}"
+
+      # Only log if we actually traveled (avoid false triggers)
+      - condition: "{{ trip_distance > 0.1 }}"
+      
+      # Record trip distance
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.idbuzz_last_trip_distance
+        data:
+          value: "{{ trip_distance }}"
+
+      # Record trip energy consumption (only if battery was actually used)
+      - condition: "{{ battery_used_percent > 0 }}"
+      - service: input_number.set_value
+        target:
+          entity_id: input_number.idbuzz_last_trip_kwh
+        data:
+          value: "{{ kwh_consumed }}"
+
+      # Record trip end location and time
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.idbuzz_trip_end_location
+        data:
+          value: "{{ state_attr('device_tracker.idbuzz_position', 'friendly_name') or 'Unknown' }}"
+      - service: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.idbuzz_trip_end_time
+        data:
+          datetime: "{{ now() }}"
+
+      # Store complete trip data in JSON file
+      - service: shell_command.log_trip_data
+        data:
+          start_time: "{{ states('input_datetime.idbuzz_trip_start_time') }}"
+          end_time: "{{ states('input_datetime.idbuzz_trip_end_time') }}"
+          start_location: "{{ states('input_text.idbuzz_trip_start_location') }}"
+          end_location: "{{ states('input_text.idbuzz_trip_end_location') }}"
+          distance: "{{ trip_distance }}"
+          kwh_consumed: "{{ kwh_consumed }}"
+          battery_percent_used: "{{ battery_used_percent }}"
+
+      # Log trip details with locations
+      - service: logbook.log
+        data:
+          name: "EV Trip Completed"
+          message: "From: {{ states('input_text.idbuzz_trip_start_location') }} to {{ states('input_text.idbuzz_trip_end_location') }} - Distance: {{ trip_distance }}km, Battery used: {{ battery_used_percent }}% ({{ kwh_consumed }}kWh)"
+
+
+
+# === Shell Commands ===
+shell_command:
+  log_trip_data: >
+    python3 -c "
+    import json, os
+    from datetime import datetime
+    
+    trip_data = {
+        'start_time': '{{ start_time }}',
+        'end_time': '{{ end_time }}',
+        'start_location': '{{ start_location }}',
+        'end_location': '{{ end_location }}',
+        'distance_km': {{ distance }},
+        'kwh_consumed': {{ kwh_consumed }},
+        'battery_percent_used': {{ battery_percent_used }}
+    }
+    
+    file_path = '/config/ev_trips.json'
+    trips = []
+    
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as f:
+            trips = json.load(f)
+    
+    trips.insert(0, trip_data)
+    # Keep only last 50 trips add --> trips = trips[:50]
+    
+    with open(file_path, 'w') as f:
+        json.dump(trips, f, indent=2)
+    "
+
+# === Sensors ===
+sensor:
+  - platform: template
+    sensors:
+      ev_trip_history:
+        friendly_name: "EV Trip History"
+        value_template: >
+          {% set data = states.sensor.ev_trips_file_content.state %}
+          {% if data and data != 'unknown' %}
+            {{ (data | from_json | length) if data != '[]' else 0 }}
+          {% else %}
+            0
+          {% endif %}
+        unit_of_measurement: "trips"
+        attribute_templates:
+          trips: >
+            {% set data = states.sensor.ev_trips_file_content.state %}
+            {% if data and data != 'unknown' %}
+              {{ data | from_json }}
+            {% else %}
+              []
+            {% endif %}
+
+  - platform: command_line
+    name: ev_trips_file_content
+    command: "cat /config/ev_trips.json 2>/dev/null || echo '[]'"
+    scan_interval: 30
+
+# === Utility Meters for Trip Aggregation ===
+utility_meter:
+  daily_mileage:
+    source: input_number.idbuzz_last_trip_distance
+    cycle: daily
+  weekly_mileage:
+    source: input_number.idbuzz_last_trip_distance
+    cycle: weekly
+  monthly_mileage:
+    source: input_number.idbuzz_last_trip_distance
+    cycle: monthly
+
+  daily_battery_consumption:
+    source: input_number.idbuzz_last_trip_kwh
+    cycle: daily
+  weekly_battery_consumption:
+    source: input_number.idbuzz_last_trip_kwh
+    cycle: weekly
+  monthly_battery_consumption:
+    source: input_number.idbuzz_last_trip_kwh
+    cycle: monthly
+    
+
