@@ -225,21 +225,27 @@ utility_meter:
   idbuzz_daily_mileage:
     source: input_number.idbuzz_last_trip_distance
     cycle: daily
+    unit_of_measurement: "km"
   idbuzz_weekly_mileage:
     source: input_number.idbuzz_last_trip_distance
     cycle: weekly
+    unit_of_measurement: "km"
   idbuzz_monthly_mileage:
     source: input_number.idbuzz_last_trip_distance
     cycle: monthly
+    unit_of_measurement: "km"
 
   idbuzz_daily_battery_consumption:
     source: input_number.idbuzz_last_trip_kwh
     cycle: daily
+    unit_of_measurement: "kWh"
   idbuzz_weekly_battery_consumption:
     source: input_number.idbuzz_last_trip_kwh
     cycle: weekly
+    unit_of_measurement: "kWh"
   idbuzz_monthly_battery_consumption:
     source: input_number.idbuzz_last_trip_kwh
     cycle: monthly
+    unit_of_measurement: "kWh"
     
 

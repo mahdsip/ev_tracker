@@ -197,19 +197,25 @@ utility_meter:
   idbuzz_daily_charging:
     source: input_number.idbuzz_last_charge_kwh
     cycle: daily
+    unit_of_measurement: "kWh"
   idbuzz_weekly_charging:
     source: input_number.idbuzz_last_charge_kwh
     cycle: weekly
+    unit_of_measurement: "kWh"
   idbuzz_monthly_charging:
     source: input_number.idbuzz_last_charge_kwh
     cycle: monthly
+    unit_of_measurement: "kWh"
 
   idbuzz_daily_charging_cost:
     source: input_number.idbuzz_last_charge_cost
     cycle: daily
+    unit_of_measurement: "€"
   idbuzz_weekly_charging_cost:
     source: input_number.idbuzz_last_charge_cost
     cycle: weekly
+    unit_of_measurement: "€"
   idbuzz_monthly_charging_cost:
     source: input_number.idbuzz_last_charge_cost
     cycle: monthly
+    unit_of_measurement: "€"
