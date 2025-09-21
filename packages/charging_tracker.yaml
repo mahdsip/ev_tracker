@@ -6,6 +6,7 @@ input_number:
     min: 0
     max: 100
     step: 0.1
+    unit_of_measurement: "%"
 
   idbuzz_last_charge_kwh:
     name: Last Charge kWh
